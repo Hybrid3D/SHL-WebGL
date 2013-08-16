@@ -1,0 +1,676 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+<title>Spherical Harmonics Demo</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+<style>
+#header {
+	padding: 10px 0 0 5px;
+}
+table {
+	border-collapse: collapse;
+}
+td { 
+	border-style: solid;
+	border-width: 1px;
+	width:50px;
+	height:80px;
+	text-align: right;
+	font-size: 80%;
+}
+th {
+	border-style: solid;
+	border-width: 1px;
+	background: #366B9F top repeat-x ;
+	color: #FFF;
+	width:50px;
+	height:50px;
+	border: 1px solid #A1C3E6;
+	border-collapse: collapse;
+}
+th.row {
+	text-align: center;
+	background-color: #BDDBF9;
+	background-image: none;
+	height: auto;
+	color: #356EAB;
+	font-weight: normal;
+}
+</style>
+<script language="javascript">
+
+function include(url){
+  var element;
+  switch(url.split(".").pop()){
+    case "css":{
+      element=document.createElement("link");
+      element.setAttribute("rel","stylesheet");
+      element.setAttribute("type","text/css")
+      element.setAttribute("href",url)
+    }break;
+    case "js":{
+      element=document.createElement("script");
+      element.setAttribute("language","javascript")
+      element.setAttribute("src",url)
+    }break;
+    default:window.console && window.console.error("could not identify",url,"skip include");return;
+  }
+  var head=document.querySelector("head");
+  if(head.innerHTML.indexOf(element.outerHTML)!=-1){
+    window.console && window.console.warn("Duplicate include, skipping:",url);
+  }else{
+    head.appendChild(element);
+  }
+}
+
+//include("https://cvs.khronos.org/svn/repos/registry/trunk/public/webgl/sdk/demos/common/webgl-utils.js");
+//include("https://cvs.khronos.org/svn/repos/registry/trunk/public/webgl/sdk/demos/webkit/resources/J3DI.js");
+//include("https://cvs.khronos.org/svn/repos/registry/trunk/public/webgl/sdk/demos/webkit/resources/J3DIMath.js");
+//include("https://cvs.khronos.org/svn/repos/registry/trunk/public/webgl/sdk/demos/google/shiny-teapot/teapot-streams.js");
+
+//include("https://www.khronos.org/registry/webgl/sdk/demos/common/webgl-utils.js");
+//include("https://www.khronos.org/registry/webgl/sdk/demos/webkit/resources/J3DI.js");
+//include("https://www.khronos.org/registry/webgl/sdk/demos/webkit/resources/J3DIMath.js");
+//include("https://www.khronos.org/registry/webgl/sdk/demos/google/shiny-teapot/teapot-streams.js");
+
+include("lib/webgl-utils.js");
+include("lib/J3DI.js");
+include("lib/J3DIMath.js");
+include("resource/teapot-streams.js");
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+	uniform mat4 gModelViewProjMatrix;
+	uniform mat4 gNormalMatrix;
+	uniform vec3 gSHLight[9];
+	uniform float gRotationAngle;
+
+	attribute vec3 inPosition;
+	attribute vec3 inNormal;
+
+	varying vec3 vPosition;
+	varying vec3 vNormal;
+	varying vec3 vIrraColor;
+	
+	void initSH( inout vec3 outSHLight[9] )
+	{
+		for( int i = 0; i < 9; i++ )
+			outSHLight[i] = gSHLight[i];
+	}
+	
+	vec3 calcIrradianceSH( vec3 inSHLight[9], vec3 inNormal, float rotationAngle )
+	{
+		float c1 = 0.429043;
+		float c2 = 0.511664;
+		float c3 = 0.743125;
+		float c4 = 0.886227;
+		float c5 = 0.247708;
+		
+		float angle = 3.1415/2.0;
+		vec3 rotatedNormal;
+		// convert y-axis to z-axis and rotation! (rotating normal instead of SH coefficients)
+		rotatedNormal.x = inNormal.z * cos(rotationAngle) - inNormal.x * sin(rotationAngle);
+		rotatedNormal.y = inNormal.z * sin(rotationAngle) + inNormal.x * cos(rotationAngle);
+		rotatedNormal.z = inNormal.y;
+		inNormal = rotatedNormal;
+		
+		vec3 squaredNormal = inNormal * inNormal;
+
+		return 
+			  c1 * inSHLight[8] * (squaredNormal.x - squaredNormal.y)
+			+ c3 * inSHLight[6] * squaredNormal.z
+			+ c4 * inSHLight[0]
+			- c5 * inSHLight[6]
+			+ 2.0*c1 * (inSHLight[4]*inNormal.x*inNormal.y + inSHLight[7]*inNormal.x*inNormal.z + inSHLight[5]*inNormal.y*inNormal.z )
+			+ 2.0*c2 * (inSHLight[3]*inNormal.x + inSHLight[1]*inNormal.y + inSHLight[2]*inNormal.z);
+		
+	}
+
+	void main(void)
+	{
+		gl_Position = gModelViewProjMatrix * vec4( inPosition, 1.0 );
+		vec3 normal = (gNormalMatrix * vec4( inNormal, 0.0 )).xyz;
+		vNormal = normal;
+
+		vec3 SHLight[9];
+		initSH( SHLight );
+		// vIrraColor will be interpolated
+		vIrraColor = calcIrradianceSH( SHLight, normal, gRotationAngle );
+	}
+</script>
+
+
+<script id="shader-fs" type="x-shader/x-fragment">
+//#ifdef GL_ES
+	//precision mediump float;
+//#else
+	precision highp float;
+//#endif
+	//uniform sampler2D sampler2d;
+ 
+	varying vec3 vPosition;
+	varying vec3 vIrraColor;
+	//varying vec3 vVertexSH[9];
+ 
+	void main()
+	{
+		gl_FragColor = vec4(vIrraColor, 1.0);
+	}
+</script>
+
+<script type="application/x-javascript">
+var gl;
+var bMouseDown = false;
+var lastMouseX = null;
+var lastMouseY = null;
+var deltaX = 0;
+var deltaY = 0;
+var xRot = 0.0;
+var yRot = 0.0;
+
+function handleMouseDown(event) {
+	bMouseDown = true;
+	lastMouseX = event.clientX;
+	lastMouseY = event.clientY;
+}
+function handleMouseUp(event) {
+	bMouseDown = false;
+	deltaX = 0;
+	deltaY = 0;
+}
+function handleMouseMove(event) {
+	if( !bMouseDown )
+		return;
+	deltaX = event.clientX - lastMouseX;
+	deltaY = event.clientY - lastMouseY;
+	lastMouseX = event.clientX;
+	lastMouseY = event.clientY;
+	xRot += deltaX;
+	yRot += deltaY;
+}
+
+function initGL(canvas) {
+	try {
+		gl = canvas.getContext("experimental-webgl");
+		gl.viewport(0, 0, canvas.width, canvas.height);
+	} catch(e) {
+	}
+	if (!gl) {
+		alert("Could not initialise WebGL, sorry :-(");
+	}
+	
+	canvas.onmousedown = handleMouseDown;
+	document.onmouseup = handleMouseUp;
+	document.onmousemove = handleMouseMove;
+
+}
+
+function getShader(gl, id) {
+	var shaderScript = document.getElementById(id);
+	if (!shaderScript)
+		return null;
+
+	var shader;
+	if (shaderScript.type == "x-shader/x-fragment")
+	{
+		shader = gl.createShader(gl.FRAGMENT_SHADER);
+	}
+	else if (shaderScript.type == "x-shader/x-vertex")
+	{
+		shader = gl.createShader(gl.VERTEX_SHADER);
+	}
+	else
+	{
+		return null;
+	}
+
+	gl.shaderSource(shader, shaderScript.textContent);
+	gl.compileShader(shader);
+
+	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+	{
+		alert(gl.getShaderInfoLog(shader));
+		return null;
+	}
+
+	return shader;
+}
+
+var VertexPositionLoc;
+var VertexNormalLoc;
+var shaderProgram;
+function initShaders(canvas) {
+	var fragmentShader = getShader(gl, "shader-fs");
+	var vertexShader = getShader(gl, "shader-vs");
+
+	shaderProgram = gl.createProgram();
+	gl.attachShader(shaderProgram, vertexShader);
+	gl.attachShader(shaderProgram, fragmentShader);
+	gl.linkProgram(shaderProgram);
+
+	if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS))
+	{
+		alert("Could not initialise shaders");
+	}
+
+	gl.program = shaderProgram;
+	gl.useProgram(shaderProgram);
+
+	VertexPositionLoc = gl.getAttribLocation(shaderProgram, "inPosition");
+	gl.enableVertexAttribArray(VertexPositionLoc);
+	//alert( VertexPositionLoc );
+
+	VertexNormalLoc = gl.getAttribLocation(shaderProgram, "inNormal");
+	gl.enableVertexAttribArray(VertexNormalLoc);
+	//alert( VertexNormalLoc );
+	
+	// Matrix Initialization
+	gl.perspectiveMatrix = new J3DIMatrix4();
+	gl.perspectiveMatrix.makeIdentity();
+	gl.perspectiveMatrix.perspective(45, canvas.width/canvas.height, 1, 10000);
+    //gl.perspectiveMatrix.lookat(0, 0, 7, 0, 0, 0, 0, 1, 0);
+
+	gl.viewMatrix = new J3DIMatrix4();
+	gl.modelMatrix = new J3DIMatrix4();
+	//gl.gModelViewMatrixLoc = gl.getUniformLocation(gl.program, "gModelViewMatrix");
+	//alert( gl.gModelViewMatrixLoc );
+
+	gl.normalMatrix = new J3DIMatrix4();
+	gl.gNormalMatrixLoc = gl.getUniformLocation(gl.program, "gNormalMatrix");
+	//alert( gl.gNormalMatrixLoc );
+
+	gl.mvpMatrix = new J3DIMatrix4();
+	gl.gModelViewProjMatrixLoc = gl.getUniformLocation(gl.program, "gModelViewProjMatrix");
+	//alert( gl.gModelViewProjMatrixLoc );
+
+	//alert( gl.getUniformLocation(gl.program, "gSHLight") );
+	var SHLight = new Array(
+		 0.79,	0.44,	0.54, 
+		 0.39,	0.35,	0.60, 
+		-0.34, -0.18, -0.27, 
+	 	-0.29, -0.06,	0.01, 
+	 	-0.11, -0.05, -0.12, 
+	 	-0.26, -0.22, -0.47, 
+	 	-0.16, -0.09, -0.15, 
+		 0.56,	0.21,	0.14, 
+		 0.21, -0.05, -0.30 ); 
+	gl.uniform3fv(gl.getUniformLocation(gl.program, "gSHLight"), SHLight);
+	gl.uniform1i(gl.getUniformLocation(gl.program, "sampler2d"), 0);
+	
+}
+
+function Model() {
+	var VertexBufferObject;
+	var ElementVertexBufferObject;
+	var NumElements;
+	var NormalsOffset;
+	var TangentsOffset;
+	var BinormalsOffset;
+	var TexCoordsOffset
+	var ElementIndexObject;
+}
+
+function makeTeapot() {
+	var teapot = new Model();
+	
+	teapot.VertexBufferObject = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, teapot.VertexBufferObject);
+	gl.bufferData(gl.ARRAY_BUFFER,
+	              teapotPositions.byteLength +
+	              teapotNormals.byteLength +
+	              teapotTangents.byteLength +
+	              teapotBinormals.byteLength +
+	              teapotTexCoords.byteLength,
+	              gl.STATIC_DRAW);
+	teapot.NormalsOffset = teapotPositions.byteLength;
+	teapot.TangentsOffset = teapot.NormalsOffset + teapotNormals.byteLength;
+	teapot.BinormalsOffset = teapot.TangentsOffset + teapotTangents.byteLength;
+	teapot.TexCoordsOffset = teapot.BinormalsOffset + teapotBinormals.byteLength;
+	gl.bufferSubData(gl.ARRAY_BUFFER, 0, teapotPositions);
+	gl.bufferSubData(gl.ARRAY_BUFFER, teapot.NormalsOffset, teapotNormals);
+	gl.bufferSubData(gl.ARRAY_BUFFER, teapot.TangentsOffset, teapotTangents);
+	gl.bufferSubData(gl.ARRAY_BUFFER, teapot.BinormalsOffset, teapotBinormals);
+	gl.bufferSubData(gl.ARRAY_BUFFER, teapot.TexCoordsOffset, teapotTexCoords);
+
+	teapot.ElementIndexObject = gl.createBuffer();
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, teapot.ElementIndexObject);
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, teapotIndices, gl.STATIC_DRAW);
+	teapot.NumElements = teapotIndices.length;
+	return teapot;
+}
+
+
+
+function initScene() {
+	gl.teapot = makeTeapot();
+}
+
+var gRotation = true;
+var gRotationAngle = 0.0;
+t = 0;
+function drawScene() {
+	gl.clearColor(1.0, 1.0, 1.0, 1.0);
+	gl.clearDepth(1.0);
+	
+	// refreshMatrix
+	gl.modelMatrix.makeIdentity();
+	gl.modelMatrix.rotate(xRot, 0, 0, 1);
+
+	gl.viewMatrix.makeIdentity();
+	gl.viewMatrix.translate(0, 0, -100.0);
+	gl.viewMatrix.rotate(-45 + yRot, 1.0, 0.0, 0.0);
+	gl.viewMatrix.translate(0, 0, -15.0);
+
+    var mvMatrix = new J3DIMatrix4();
+    mvMatrix.load( gl.viewMatrix );
+    mvMatrix.multiply(gl.modelMatrix);
+    
+    gl.normalMatrix.load(mvMatrix);
+    gl.normalMatrix.invert();
+    gl.normalMatrix.transpose();
+    gl.normalMatrix.setUniform(gl, gl.gNormalMatrixLoc, false);
+
+	gl.mvpMatrix.load(gl.perspectiveMatrix);
+    gl.mvpMatrix.multiply(gl.viewMatrix);
+    gl.mvpMatrix.multiply(gl.modelMatrix);
+    gl.mvpMatrix.setUniform(gl, gl.gModelViewProjMatrixLoc, false);
+
+	// Clear the canvas
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+	gl.uniform3fv(gl.getUniformLocation(gl.program, "gSHLight"), getSHLight() );
+	gl.uniform1f(gl.getUniformLocation(gl.program, "gRotationAngle"), gRotationAngle );
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, gl.teapot.VertexBufferObject);
+    gl.vertexAttribPointer(VertexPositionLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(VertexPositionLoc);
+
+    gl.vertexAttribPointer(VertexNormalLoc, 3, gl.FLOAT, false, 0, gl.teapot.NormalsOffset);
+    gl.enableVertexAttribArray(VertexNormalLoc);
+
+    // Bind the index array
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.teapot.ElementIndexObject);
+	gl.drawElements(gl.TRIANGLES, gl.teapot.NumElements, gl.UNSIGNED_SHORT, 0);
+
+	// Finish up.
+	gl.flush();
+
+	// Show the framerate
+	framerate.snapshot();
+
+	// update
+	if( gRotation ) {
+		gRotationAngle += 0.02;
+		while( gRotationAngle >= 3.141592 * 2.0 )
+			gRotationAngle -=  3.141592 * 2.0;
+	}
+
+}
+
+var timer = 0;
+
+function webGLStart(canvasID) {
+	selectSHLight(0);
+	initUI();
+
+	canvas = document.getElementById(canvasID);
+	initGL(canvas);
+	initShaders(canvas)
+
+	gl.enable(gl.DEPTH_TEST);
+
+	initScene();
+
+	framerate = new Framerate("framerate");
+	
+	var f = function() {
+      window.requestAnimFrame(f, 0.01);
+      drawScene();
+    };
+    f();
+}
+</script>
+
+<script>
+var gCurSHLightIndex = 0;
+var gPrevSHLightIndex = 0;
+var gAnimationTime = 0.0;
+var gSmoothTransition = true;
+var gTransitionTime = 1.0;
+var gTransitionInterval = 0.05;
+
+function SHEnvironment( Name, SHLight ) {
+	this.Name = Name;
+	this.SHLight = SHLight;
+};
+
+var SHGraceCathedral = new SHEnvironment( "Grace Cathedral",  new Array(
+	 0.79,	0.44,  0.54, 
+	 0.39,	0.35,  0.60, 
+	-0.34, -0.18, -0.27, 
+	-0.29, -0.06,  0.01, 
+	-0.11, -0.05, -0.12, 
+	-0.26, -0.22, -0.47, 
+	-0.16, -0.09, -0.15, 
+ 	 0.56,	0.21,  0.14, 
+ 	 0.21, -0.05, -0.30 ));
+
+var SHEucalyptusGrove = new SHEnvironment( "Eucalyptus Grove",  new Array(
+	 .38,  .43,  .45,
+	 .29,  .36,  .41,
+	 .38,  .43,  .45,
+	-.10, -.10, -.09,
+	-.06, -.06, -.04,
+	 .01, -.01, -.05, 
+	-.09, -.13, -.15,
+    -.06, -.05, -.04,
+     .02, -.00, -.05 ));
+
+var SHStPetersBasilica = new SHEnvironment( "St. Peters Basilica",  new Array(
+ 	 .36,  .26,  .23,
+	 .18,  .14,  .13,
+	-.02, -.01, -.00,
+	 .03,  .02,  .01,
+	 .02,  .01,  .00,
+	-.05, -.03, -.01,
+	-.09, -.08, -.07,
+	 .01,  .00,  .00,
+	-.08, -.06,  .00 ));
+
+var gSHLights = [SHGraceCathedral, SHEucalyptusGrove, SHStPetersBasilica];
+
+var SHDummy = new Array( 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 );
+
+function MixSH( prevSHLight, curSHLight, t ) {
+	// TODO: linear to slerp
+	for( var i = 0; i < 3*9; i++ )
+		SHDummy[i] = prevSHLight[i] * (1.0-t) + curSHLight[i] * (t);
+	return SHDummy;		
+}
+
+function getSHLight() {
+	var bAnimation = document.getElementsByName("AnimationCheckbox");
+	if( gSmoothTransition ) {
+		var prev = gTransitionTime;
+		gTransitionTime += gTransitionInterval;
+		if( gTransitionTime > 1.0 )
+			gTransitionTime = 1.0;
+		return MixSH( gSHLights[gPrevSHLightIndex].SHLight,	 gSHLights[gCurSHLightIndex].SHLight, prev );
+	}
+	else {
+		return gSHLights[gCurSHLightIndex].SHLight;
+	}
+}
+
+function saveSHLight() {
+	gSHLights[gCurSHLightIndex].Name = document.getElementsByName("SHLightName")[0].value;
+	document.getElementsByName("SHLightButton")[gCurSHLightIndex].value = gSHLights[gCurSHLightIndex].Name;
+	for( var i = 0; i < 3*9; i++ )
+		gSHLights[gCurSHLightIndex].SHLight[i] = document.getElementsByName("SHLight")[i].value;
+}
+
+function RotationCheckbox() {
+	gRotation = !gRotation;
+}
+
+function ResetRotation() {
+	gRotationAngle = 0.0;
+}
+
+function SmoothTransition() {
+	gSmoothTransition = !gSmoothTransition;
+}
+
+//var SHLights;
+
+function selectSHLight( index ) {
+	gTransitionTime = 0;
+	gTransitionInterval = document.getElementsByName("TransitionInterval")[0].value * 1.0;
+ 	gPrevSHLightIndex = gCurSHLightIndex;
+ 	gCurSHLightIndex = index;
+	document.getElementById("EnvironmentName").innerHTML = "<h1>" + gSHLights[index].Name + "</h1>";
+	var SHLight = gSHLights[index].SHLight;
+	document.getElementsByName("SHLightName")[0].value = gSHLights[index].Name;
+	for( var i = 0; i < 3*9; i++ )
+		document.getElementsByName("SHLight")[i].value = SHLight[i];
+}
+
+function resetSHField() {
+	for( var i = 0; i < 3*9; i++ )
+		document.getElementsByName("SHLight")[i].value = 0.0;	
+}
+
+function initUI() {
+	document.getElementById('loading').style.display = 'none';
+	for( var i = 0; i < 3; i++ )
+		document.getElementsByName("SHLightButton")[i].value = gSHLights[i].Name;
+	selectSHLight(0);
+	document.getElementById('SHLightPanel').style.visibility = 'visible';
+	document.getElementById('controller').style.visibility = 'visible';
+}
+</script>
+</head>
+
+<body onload="webGLStart('canvas');" style="height: 100%; margin: 0">
+<div id="header">Back to <a href="/tt/">Blog (Korean)</a>, Blog (English, not open) </div>
+<div style="margin: 10px 10px 0;" id="loading">
+	<h3>
+	Loading...
+	</h3>
+</div>
+<div id="EnvironmentName" style="padding-left: 10px; height:50px;"></div>
+
+<div style="width: 100%; height: 550px;">
+	<div id="Rendering" style="float:left; margin: 10px; ">
+		<canvas id="canvas" width="400" height="400" style="border-style: ridge; border-width: 2px; ">
+			There is supposed to be an example drawing here, but it's not important.
+		</canvas>
+		<div id="framerate"></div>
+		<div id="controller" style="padding: 10px; visibility: hidden">
+			<input type="checkbox" name="RotationCheckbox" onClick="RotationCheckbox();" checked> Rotation
+			<input type="button" name="ResetRotationCheckbox" onClick="ResetRotation();" value="Reset Rotation"><br/>
+			<input type="checkbox" name="SmoothTransitionCheckbox" onClick="SmoothTransition();" checked> SmoothTransition</br>
+			Transition Interval: <input type="text" name="TransitionInterval" value="0.05"><br/>
+		</div>
+	</div>
+
+<div id='SHLightPanel' style="padding: 10px; float:left; align:left; visibility: hidden; ">
+	<input type="button" name="SHLightButton" value="" onClick="selectSHLight(0);">
+	<input type="button" name="SHLightButton" value="" onClick="selectSHLight(1);">
+	<input type="button" name="SHLightButton" value="" onClick="selectSHLight(2);"><br/><br/>
+	<b>SH Light Name: </b><input type="text" value="Cathedral" name="SHLightName"></br>
+	
+	<table>
+		<tr><th></th><th>m=-2</th><th>m=-1</th><th>m=0</th><th>m=1</th><th>m=2</th></tr>
+		<tr><th>l=0</th><td></td><td></td>
+			<td><img src="img/Sample Functions-0.jpg" height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td></td><td></td></tr>
+		<tr><th>l=1</th><td></td>
+			<td><img src="img/Sample Functions-1.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td><img src="img/Sample Functions-2.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td><img src="img/Sample Functions-3.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td></td></tr>
+		<tr><th>l=2</th>
+			<td><img src="img/Sample Functions-4.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td><img src="img/Sample Functions-5.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td><img src="img/Sample Functions-6.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td><img src="img/Sample Functions-7.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td>
+			<td><img src="img/Sample Functions-8.jpg"  height="50px"><br>
+				R<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				G<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();"><br>
+				B<input type="text" value="" name="SHLight" size="2" style="height:10px;" onkeydown="if(event.keyCode==13) saveSHLight();">
+			</td></tr>
+	</table>
+	<input type="button" value="Save (Enter)" onClick="saveSHLight();">
+	<input type="button" value="Reset to Zero" onClick="resetSHField();">
+</div>
+</div>
+
+<hr />
+<div id="info" style="margin: 20px; ">
+Spherical Harmonics Lighting based on Ramamoorthi's SH Irradiance Method using WebGL.
+
+<p>
+You can see how changing coefficients affect to rendering result.
+Change coefficients at the right pannel then click the save button(or press enter).
+</p>
+
+<p>
+This WebGL Demo is based on <a href="http://graphics.stanford.edu/papers/envmap/"><i>An Efficient Representation for Irradiance Environment Maps, Ravi Ramamoorthi and Pat Hanrahan, SIGGRAPH (2001)</i></a>.
+Images are from <a href="http://www.research.scea.com/gdc2003/spherical-harmonic-lighting.html">Spherical Harmonic Lighting: The Gritty Details, Robin Green (2003)</a>
+</p>
+
+<h3>Controlls</h3>
+<ul>
+<li><b>Rotation</b>: SH light rotation (I rotated normals instead of spherical harmonics coefficients.)</li>
+<li><b>Smooth Transition</b>: Time interpolation between different SH lights (eg. from Grace Cathedral to Eucalyptus Grove)</li>
+</ul>
+
+<h3>WebGL Support Browsers</h3>
+<ul>
+<li>Opera 12.00</li>
+<li>Chrome 9 or higher, on Linux, Mac and Windows</li>
+<li>Firefox 4 and higher</li>
+<li>Safari 5.1 or higher on Leopard, Snow Leopard, or Lion (not on Windows)</li>
+</ul>
+<p>If you found any bugs or have any comments, please let me know.</p>
+
+<p>- creavol (a.t) gmail.com (02/05/2012)</p>
+</div>
+
+</body>
+
+</html> 
